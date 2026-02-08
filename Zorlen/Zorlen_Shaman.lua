@@ -20,7 +20,9 @@ Zorlen_Shaman_FileBuildNumber = 684
 --]]
 
 
-
+-- TODO
+-- Healing Wave, Lesser Healing Wave
+-- Group Heal
 
 
 --------   All functions below this line will only load if you are playing the corresponding class   --------
@@ -89,13 +91,13 @@ end
 -- Map for basic casting functions
 local CastSpellMap = {
 	castLightningBolt = {key = "LightningBolt", checkMoving = true},
-	castHealingWave = {key = "HealingWave", checkMoving = true},
+	castMoltenBlast = {key = "MoltenBlast", checkMoving = true},
 	castFlameShock = {key = "FlameShock", hasDebuff = true},
-	castDivineSpirit = {key = "DivineSpirit", hasBuff = true, enemyTargetNotNeeded = true},
-	castDevouringPlague = {key = "DevouringPlague"},
-	castPsychicScream = {key = "PsychicScream", enemyTargetNotNeeded = true, noRangeCheck = true},
-	castFear = {key = "Fear", hasDebuff = true},
-	castMindVision = {key = "MindVision", enemyTargetNotNeeded = true}
+	castFrostShock = {key = "FrostShock", hasDebuff = true},
+	castEarthShock = {key = "EarthShock"},
+	castEarthShield = {key = "EarthShield", hasBuff = true, enemyTargetNotNeeded = true},
+	castLightningShield = {key = "LightningShield", hasBuff = true, enemyTargetNotNeeded = true},
+	castWaterShield = {key = "WaterShield", hasBuff = true, enemyTargetNotNeeded = true},
 }
 
 -- Generate casting functions
@@ -131,14 +133,14 @@ end
 -- Map for healing variant functions (Under/Over/Max)
 local HealingVariantMap = {
 	-- Individual healing spells
-	{base = "castLesserHeal", params = {"RankAdj", "unit"}},
-	{base = "castHeal", params = {"RankAdj", "unit"}},
-	{base = "castGreaterHeal", params = {"RankAdj", "unit"}},
-	{base = "castPriestHeal", params = {"RankAdj", "unit"}},
-	{base = "castFlashHeal", params = {"RankAdj", "unit"}},
+	{base = "castLesserHealingWave", params = {"RankAdj", "unit"}},
+	{base = "castHealingWave", params = {"RankAdj", "unit"}},
+	{base = "castChainHeal", params = {"RankAdj", "unit"}},
+	{base = "castShamanHeal", params = {"RankAdj", "unit"}},
+	
 	
 	-- Group healing spells (different parameter order)
-	{base = "castGroupPriestHeal", params = {"pet", "RankAdj"}}
+	{base = "castGroupShamanHeal", params = {"pet", "RankAdj"}}
 }
 
 -- Generate healing variant functions
@@ -191,4 +193,4 @@ for _, config in ipairs(HealingVariantMap) do
 	end
 end
 
-Zorlen_debug("Zorlen Priest successfully loaded " .. countFunctions .. " functions.", 1)
+Zorlen_debug("Zorlen Shaman successfully loaded " .. countFunctions .. " functions.", 1)
