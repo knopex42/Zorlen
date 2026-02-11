@@ -240,9 +240,7 @@ local HealingVariantMap = {
 }
 
 -- Generate healing variant functions
-for i = 1, #HealingVariantMap do
-	local config = HealingVariantMap[i]
-	
+for _, config in ipairs(HealingVariantMap) do	
 	do
 		local baseName = config.base
 		local params = config.params
@@ -346,8 +344,7 @@ function castGroupShamanHeal(pet, Mode, RankAdj)
 	-- Handle casting interruption logic
 	local healSpells = {SpellName, LOCALIZATION_ZORLEN.HealingWave}
 	local isCastingHeal = false
-	for i = 1, #healSpells do
-		local spell = healSpells[i]
+	for _, spell in ipairs(healSpells) do
 		if Zorlen_isCasting(spell) then
 			isCastingHeal = true
 			break
@@ -410,8 +407,7 @@ function castGroupShamanHeal(pet, Mode, RankAdj)
 	end
 	
 	-- Clean up any ongoing casting if no unit found
-	for i = 1, #healSpells do
-		local spell = healSpells[i]
+	for _, spell in ipairs(healSpells) do
 		if Zorlen_isCasting(spell) then
 			SpellStopCasting()
 			break
@@ -441,8 +437,7 @@ function castShamanHeal(Mode, RankAdj, unit)
 			return
 		end
 
-		for i = 1, #spellIds do
-			local spellId = spellIds[i]
+		for _, spellId in ipairs(spellIds) do
 			local info = Zorlen_SpellInfo[spellId]
 			if info then
 				--Zorlen_debug("Adding spell: " .. info.name .. " (ID: " .. spellId .. ")")
@@ -454,7 +449,7 @@ function castShamanHeal(Mode, RankAdj, unit)
 				SpellButtonArray[idx]  = button
 				SpellRankArray[idx]    = info.rank
 				idx = idx + 1
-			end
+		end
 		end
 	end
 
