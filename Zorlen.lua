@@ -4507,23 +4507,21 @@ function Zorlen_InventoryScan(Healing, ShadowDamage, SpellDamage)
   local Tooltip = ZORLEN_Tooltip
   local getg = getglobal
   local sfind = string.find
-  local smatch = string.match
-
   local SetsWorn = {}
 
   -- helpers (no extra tables created)
   local function parseBonus(text)
     -- +X-Y Name
-    local a,b,name = smatch(text, "^%+(%d+)%-(%d+)%s+(.*)$")
+    local _, _, a, b, name = string.find(text, "^%+(%d+)%-(%d+)%s+(.*)$")
     if a then return a+0, b+0, name end
     -- Name +X-Y
-    name,a,b = smatch(text, "^(.*)%s+%+(%d+)%-(%d+)$")
+    _, _, name, a, b = string.find(text, "^(.*)%s+%+(%d+)%-(%d+)$")
     if a then return a+0, b+0, name end
     -- +X Name
-    a,name = smatch(text, "^%+(%d+)%s+(.*)$")
+    _, _, a, name = string.find(text, "^%+(%d+)%s+(.*)$")
     if a then return a+0, nil, name end
     -- Name +X
-    name,a = smatch(text, "^(.*)%s+%+(%d+)$")
+    _, _, name, a = string.find(text, "^(.*)%s+%+(%d+)$")
     if a then return a+0, nil, name end
     return nil,nil,nil
   end
@@ -6480,7 +6478,7 @@ function Zorlen_SpellCastTime(SpellName, SpellRank)
 		return 0
 	end
 
-	castTime = string.match(castTime, "([%d%.]+)")
+	_, _, castTime = string.find(castTime, "([%d%.]+)")
 	if not castTime then
 		return 0
 	end
