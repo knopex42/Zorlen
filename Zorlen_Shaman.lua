@@ -474,3 +474,39 @@ function castLesserHealingWave(Mode, RankAdj, unit)
 	return Zorlen_CastHealingSpell(SpellName, nil, nil, nil, nil, nil, Mode, RankAdj, unit, SpellButton)
 end
 
+-- Shaman one button rotation
+-- Track the last Flameshock cast time
+local lastFlameShockTime = 0
+
+function CastShamanRotation()
+    local hasFlameshock = false
+    
+    -- Check if target has Flameshock debuff
+    -- This checks for the debuff on the current target
+    for i = 1, 40 do
+        local debuffName, _, _, _, debuffType = UnitDebuff("target", i)
+        if debuffName == "Flameshock" then
+            hasFlameshock = true
+            break
+        end
+    end
+    
+    local currentTime = GetTime()
+    
+    -- Priority 1: Cast Flameshock if debuff is not on target
+    if not hasFlameshock then
+        CastSpellByName("Flameshock")
+        lastFlameShockTime = currentTime
+        return
+    end
+    
+    -- Priority 2: Cast Molten Blast if 11+ seconds have passed since last Flameshock
+    if (currentTime - lastFlameShockTime) >= 11 then
+        CastSpellByName("Molten Blast")
+        lastFlameShockTime = currentTime  -- Reset timer
+        return
+    end
+    
+    -- Priority 3: Cast Lightning Bolt
+    CastSpellByName("Lightning Bolt")
+end

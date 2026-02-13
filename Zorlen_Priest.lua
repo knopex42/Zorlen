@@ -1465,3 +1465,112 @@ function castFlashHeal(Mode, RankAdj, unit)
 	return Zorlen_CastHealingSpell(SpellName, nil, nil, nil, nil, nil, Mode, RankAdj, unit, SpellButton)
 end
 
+-- Will only cast the spell on your self if you do not have it on you and will not be able to cast on anything else.
+function castSelfDivineSpirit()
+	local SpellName = LOCALIZATION_ZORLEN.DivineSpirit
+	local SpellButton = Zorlen_Button[SpellName]
+	local SpellID = nil
+	
+	-- Early return if player already has buff
+	if isDivineSpiritActive() then
+		return false
+	end
+	
+	-- Check spell availability
+	local canCast = false
+	if SpellButton then
+		local isUsable, notEnoughMana = IsUsableAction(SpellButton)
+		local _, duration, _ = GetActionCooldown(SpellButton)
+		local isCurrent = IsCurrentAction(SpellButton)
+		canCast = (isUsable == 1) and (not notEnoughMana) and (duration == 0) and (isCurrent ~= 1)
+	elseif Zorlen_IsSpellKnown(SpellName) then
+		Zorlen_debug("" .. SpellName .. " was not found on any of the action bars!")
+		SpellID = Zorlen_GetSpellID(SpellName)
+		canCast = Zorlen_checkCooldown(SpellID)
+	else
+		return false
+	end
+	
+	-- Early return if spell not ready
+	if not canCast then
+		return false
+	end
+	
+	-- Manage targeting (retarget if we have a friendly target)
+	local needsRetarget = UnitIsFriend("player", "target") and not UnitIsUnit("player", "target")
+	if needsRetarget then
+		TargetUnit("player")
+	end
+	
+	-- Cast the spell
+	if SpellButton then
+		UseAction(SpellButton)
+	else
+		CastSpell(SpellID, 0)
+	end
+	
+	-- Restore target if needed
+	if needsRetarget then
+		TargetLastTarget()
+	end
+	
+	-- Handle spell targeting
+	if SpellIsTargeting() and SpellCanTargetUnit("player") then
+		SpellTargetUnit("player")
+	elseif SpellIsTargeting() then
+		SpellStopTargeting()
+		return false
+	end
+	
+	return true
+end
+
+-- Will only cast the spell on your self if you do not have it on you. Inner Fire can only be cast on the player.
+function castSelfInnerFire()
+	local SpellName = LOCALIZATION_ZORLEN.InnerFire
+	local SpellButton = Zorlen_Button[SpellName]
+	local SpellID = nil
+	
+	-- Early return if player already has buff
+	if isInnerFireActive() then
+		return false
+	end
+	
+	-- Check spell availability
+	local canCast = false
+	if SpellButton then
+		local isUsable, notEnoughMana = IsUsableAction(SpellButton)
+		local _, duration, _ = GetActionCooldown(SpellButton)
+		local isCurrent = IsCurrentAction(SpellButton)
+		canCast = (isUsable == 1) and (not notEnoughMana) and (duration == 0) and (isCurrent ~= 1)
+	elseif Zorlen_IsSpellKnown(SpellName) then
+		Zorlen_debug("" .. SpellName .. " was not found on any of the action bars!")
+		SpellID = Zorlen_GetSpellID(SpellName)
+		canCast = Zorlen_checkCooldown(SpellID)
+	else
+		return false
+	end
+	
+	-- Early return if spell not ready
+	if not canCast then
+		return false
+	end
+	
+	-- Cast the spell (self-only, no targeting needed)
+	if SpellButton then
+		UseAction(SpellButton)
+	else
+		CastSpell(SpellID, 0)
+	end
+	
+	return true
+end
+
+-- Will cast all three self-buffs if not already applied: Power Word: Fortitude, Divine Spirit, and Inner Fire
+function castSelfBuffs()
+	castSelfPowerWordFortitude()
+	castSelfDivineSpirit()
+	castSelfInnerFire()
+	return true
+end
+
