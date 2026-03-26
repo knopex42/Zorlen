@@ -562,6 +562,7 @@ LOCALIZATION_ZORLEN = {}
 	LOCALIZATION_ZORLEN["Zeal"] = "Zeal"
 	LOCALIZATION_ZORLEN["CrusaderStrike"] = "Crusader Strike"
 	LOCALIZATION_ZORLEN["HolyStrike"] = "Holy Strike"
+	LOCALIZATION_ZORLEN["HolyMight"] = "Holy Might"
 
 
 
@@ -719,10 +720,7 @@ LOCALIZATION_ZORLEN = {}
 	LOCALIZATION_ZORLEN["LesserHealingWave"] = "Lesser Healing Wave"
 	LOCALIZATION_ZORLEN["HealingWave"] = "Healing Wave"
 	LOCALIZATION_ZORLEN["LightningBolt"] = "Lightning Bolt"
-	LOCALIZATION_ZORLEN["EarthShield"] = "Earth Shield"
 	LOCALIZATION_ZORLEN["LightningShield"] = "Lightning Shield"
-	LOCALIZATION_ZORLEN["WaterShield"] = "Water Shield"
-	LOCALIZATION_ZORLEN["MoltenBlast"] = "Molten Blast"
 	LOCALIZATION_ZORLEN["NaturesSwiftness"] = "Nature's Swiftness"
 	LOCALIZATION_ZORLEN["Purge"] = "Purge"
 	LOCALIZATION_ZORLEN["Reincarnation"] = "Reincarnation"

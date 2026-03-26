@@ -455,19 +455,22 @@ function Zorlen_SetShardBagSize(show)
 	if NUM_BAG_FRAMES and NUM_BAG_FRAMES > 0 then
 		local SoulBagitemType = LOCALIZATION_ZORLEN["Soul Bag"]
 		local BagitemType = LOCALIZATION_ZORLEN.Bag
-		for bag=1,NUM_BAG_FRAMES do
+		for bag=1,NUM_BAG_FRAMES do repeat
 			local bagslots = GetContainerNumSlots(bag)
-			if bagslots and bagslots > 0 then
-				local itemType = Zorlen_GetItemSubType(GetInventoryItemLink("player", ContainerIDToInventoryID(bag)))
-				if itemType == SoulBagitemType then
-					ShardBagSize = bagslots
-					Zorlen_debug("You have a "..itemType.." equipped in bag slot:  "..bag, show)
-					break
-				elseif itemType == BagitemType and bagslots > ShardBagSize then
-					ShardBagSize = bagslots
-				end
+			if not (bagslots and bagslots > 0) then
+				break
 			end
-		end
+
+			local itemType = Zorlen_GetItemSubType(GetInventoryItemLink("player", ContainerIDToInventoryID(bag)))
+			if itemType == SoulBagitemType then
+				ShardBagSize = bagslots
+				Zorlen_debug("You have a "..itemType.." equipped in bag slot:  "..bag, show)
+				break
+			elseif itemType == BagitemType and bagslots > ShardBagSize then
+				ShardBagSize = bagslots
+			end
+
+		until true end
 	end
 	Zorlen_ShardBagSize = ShardBagSize
 	Zorlen_debug("Soul Shard gather amount has been set to:  "..Zorlen_ShardBagSize, show)
@@ -841,19 +844,19 @@ function castSoulFire(SpellRank, SkipShardCheck)
 	if Zorlen_isMoving() then
 		return false
 	end
+	if not SkipShardCheck then
+		if SpellRank then
+			if not Zorlen_Button[LOCALIZATION_ZORLEN.SoulFire.."."..SpellRank] and not Zorlen_isItemByItemIDInContainer(6265) then
+				return false
+			end
+		elseif not Zorlen_Button[LOCALIZATION_ZORLEN.SoulFire] and not Zorlen_isItemByItemIDInContainer(6265) then
+			return false
+		end
+	end
 	local z = {}
 	z.SpellName = LOCALIZATION_ZORLEN.SoulFire
 	z.Rank = SpellRank
 	z.DebuffImmune = Zorlen_FireSpellCastImmune
-	if not SkipShardCheck then
-		if z.Rank then
-			if not Zorlen_Button[z.SpellName.."."..z.Rank] and not Zorlen_isItemByItemIDInContainer(6265) then
-				return false
-			end
-		elseif not Zorlen_Button[z.SpellName] and not Zorlen_isItemByItemIDInContainer(6265) then
-			return false
-		end
-	end
 	return Zorlen_CastCommonRegisteredSpell(z)
 end
 
@@ -1103,32 +1106,33 @@ end
 
 
 function castShadowBolt(SpellRank)
+	local stopCasting = isNightfallActive()
+	if Zorlen_isMoving() and not stopCasting then
+		return false
+	end
 	local z = {}
 	z.SpellName = LOCALIZATION_ZORLEN.ShadowBolt
 	z.Rank = SpellRank
-	z.StopCasting = isNightfallActive()
+	z.StopCasting = stopCasting
 	z.DebuffImmune = Zorlen_ShadowSpellCastImmune
-	if Zorlen_isMoving() and not z.StopCasting then
-		return false
-	end
 	return Zorlen_CastCommonRegisteredSpell(z)
 end
 
 function castShadowburn(SpellRank, SkipShardCheck, StopCast)
+	if not SkipShardCheck then
+		if SpellRank then
+			if not Zorlen_Button[LOCALIZATION_ZORLEN.Shadowburn.."."..SpellRank] and not Zorlen_isItemByItemIDInContainer(6265) then
+				return false
+			end
+		elseif not Zorlen_Button[LOCALIZATION_ZORLEN.Shadowburn] and not Zorlen_isItemByItemIDInContainer(6265) then
+			return false
+		end
+	end
 	local z = {}
 	z.SpellName = LOCALIZATION_ZORLEN.Shadowburn
 	z.Rank = SpellRank
 	z.DebuffImmune = Zorlen_ShadowSpellCastImmune
 	z.StopCasting = StopCast
-	if not SkipShardCheck then
-		if z.Rank then
-			if not Zorlen_Button[z.SpellName.."."..z.Rank] and not Zorlen_isItemByItemIDInContainer(6265) then
-				return false
-			end
-		elseif not Zorlen_Button[z.SpellName] and not Zorlen_isItemByItemIDInContainer(6265) then
-			return false
-		end
-	end
 	return Zorlen_CastCommonRegisteredSpell(z)
 end
 

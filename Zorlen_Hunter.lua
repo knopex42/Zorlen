@@ -1418,3 +1418,54 @@ function castHunterTracking()
 	end
 	return castTrackHumanoids()
 end
+
+-- pet command
+function CommandPet()
+	if UnitExists("target") then
+		if UnitIsFriend("player", "target") then
+			AssistUnit("target")
+			zFuriousHowl()
+			PetAttack()
+			zDash()
+			zDive()
+		else
+			if UnitExists("pettarget") and UnitIsUnit("target", "pettarget") then
+				PetFollow()
+				zDash()
+				zDive()
+			else
+				zCowerAutocastOff()
+				zGrowlAutocastOn()
+				zFuriousHowl()
+				PetAttack()
+				zDash()
+				zDive()
+			end
+		end
+	else
+		PetFollow()
+		zDash()
+		zDive()
+	end
+end
+
+-- pet care
+function PetCare()
+    if( IsShiftKeyDown()) then
+      castMend();
+    elseif (not UnitExists("pet")) then
+      CastSpellByName("Call Pet");
+    elseif (UnitHealth("pet")==0) then
+      CastSpellByName("Revive Pet");
+    elseif (Zorlen_petInCombat()) then
+      if UnitExists("pettarget") then
+        castMaxMend()
+      else
+        RunMacro("Feed")
+      end
+    elseif (GetPetHappiness()~=3) then
+      RunMacro("Feed");
+    else
+      CastSpellByName("Dismiss Pet");
+    end
+end

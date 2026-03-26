@@ -17,6 +17,7 @@ f:SetScript("OnEvent", function()
 			local spellIndex = offset + j
 			local spellName, rank = GetSpellName(spellIndex, B)
 			local found, _, Rank = string.find(rank, "(%d+)")
+			local RankNum
 			if found then
 				RankNum = tonumber(Rank)
 			else
@@ -1308,6 +1309,13 @@ function castGreaterHeal(Mode, RankAdj, unit)
 end
 
 
+-- Reusable arrays for castPriestHeal (hoisted to file scope to avoid per-call allocation)
+local _ManaArray, _MinHealArray, _MaxHealArray, _TimeArray = {}, {}, {}, {}
+local _SpellNameArray, _SpellButtonArray, _SpellRankArray = {}, {}, {}
+
+-- Reusable healSpells table for castGroupPriestHeal (constant after load)
+local _healSpells  -- initialized lazily on first call
+
 --This will try to heal party or raid members as long as you are not targeting a party or raid member that can be healed by the spell.
 --I made it give priority to your current target so that you have the option to choose priority in the heat of battle.
 --If you want it to always select for you then just clear your target or target an enemy before using the function.
@@ -1329,8 +1337,11 @@ function castGroupPriestHeal(pet, Mode, RankAdj)
 		return false
 	end
 	
-	-- Handle casting interruption logic
-	local healSpells = {SpellName, LOCALIZATION_ZORLEN.Heal, LOCALIZATION_ZORLEN.GreaterHeal}
+	-- Handle casting interruption logic (lazy-init the reusable table once)
+	if not _healSpells then
+		_healSpells = {LOCALIZATION_ZORLEN.LesserHeal, LOCALIZATION_ZORLEN.Heal, LOCALIZATION_ZORLEN.GreaterHeal}
+	end
+	local healSpells = _healSpells
 	local isCastingHeal = false
 	for _, spell in ipairs(healSpells) do
 		if Zorlen_isCasting(spell) then
@@ -1415,20 +1426,24 @@ function castPriestHeal(Mode, RankAdj, unit)
 
 	local LevelLearnedArray = nil
 
-	local ManaArray, MinHealArray, MaxHealArray, TimeArray = {}, {}, {}, {}
-	local SpellNameArray, SpellButtonArray, SpellRankArray = {}, {}, {}
+	-- Reuse file-scope arrays (avoid per-call allocation)
+	local ManaArray, MinHealArray, MaxHealArray, TimeArray = _ManaArray, _MinHealArray, _MaxHealArray, _TimeArray
+	local SpellNameArray, SpellButtonArray, SpellRankArray = _SpellNameArray, _SpellButtonArray, _SpellRankArray
 	local idx = 1
 
 	-- helper to append ranks from a spell-id list
 	local function addRanks(spellIds, button)
-		if not (spellIds and button) then
-			Zorlen_debug("No spellIds or button provided for addRanks")
+		if not spellIds then
 			return
 		end
 
-		for _, spellId in ipairs(spellIds) do
-		local info = Zorlen_SpellInfo[spellId]
-		if info then
+		for _, spellId in ipairs(spellIds) do repeat
+			local info = Zorlen_SpellInfo[spellId]
+			if not info then
+				Zorlen_debug("No spell info found for spell ID: " .. tostring(spellId))
+				break
+			end
+
 			--Zorlen_debug("Adding spell: " .. info.name .. " (ID: " .. spellId .. ")")
 			ManaArray[idx]         = info.cost
 			MinHealArray[idx]      = info.minVal
@@ -1438,13 +1453,26 @@ function castPriestHeal(Mode, RankAdj, unit)
 			SpellButtonArray[idx]  = button
 			SpellRankArray[idx]    = info.rank
 			idx = idx + 1
-		end
-		end
+
+		until true end
 	end
 
 	addRanks(Zorlen_SpellIdsByRankbySpellName[LOCALIZATION_ZORLEN.LesserHeal],  Zorlen_Button_Any[LOCALIZATION_ZORLEN.LesserHeal])
 	addRanks(Zorlen_SpellIdsByRankbySpellName[LOCALIZATION_ZORLEN.Heal],        Zorlen_Button_Any[LOCALIZATION_ZORLEN.Heal])
 	addRanks(Zorlen_SpellIdsByRankbySpellName[LOCALIZATION_ZORLEN.GreaterHeal], Zorlen_Button_Any[LOCALIZATION_ZORLEN.GreaterHeal])
+
+	-- Nil out stale entries beyond current count
+	local stale = idx
+	while ManaArray[stale] do
+		ManaArray[stale]        = nil
+		MinHealArray[stale]     = nil
+		MaxHealArray[stale]     = nil
+		TimeArray[stale]        = nil
+		SpellNameArray[stale]   = nil
+		SpellButtonArray[stale] = nil
+		SpellRankArray[stale]   = nil
+		stale = stale + 1
+	end
 
 	-- nothing gathered? bail
 	if idx == 1 then
@@ -1573,4 +1601,3 @@ function castSelfBuffs()
 	castSelfInnerFire()
 	return true
 end
-
