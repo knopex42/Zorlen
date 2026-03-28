@@ -304,33 +304,6 @@ function Zorlen_Hunter_AfterPreSpellCancelTimers(Name, Pre, Tag)
 	end
 end
 
-function Zorlen_Hunter_MakeMacros()
-	Zorlen_MakeMacro("z Mend Pet",
-		"/script if not needPet()then castOverMend()end--CastSpellByName(\"" ..
-		LOCALIZATION_ZORLEN.MendPet .. "(" .. LOCALIZATION_ZORLEN.Rank .. " 1)\")", 1, "Ability_Hunter_MendPet", nil, nil,
-		1)
-	Zorlen_MakeMacro("z FreezingTrap",
-		"/script castFreezingTrapWithPetPassive()--CastSpellByName(\"" .. LOCALIZATION_ZORLEN.FreezingTrap .. "\")", 1,
-		"Spell_Frost_ChainsOfIce", nil, nil, 1)
-	Zorlen_MakeMacro("z FrostTrap", "/script castFrostTrap()--CastSpellByName(\"" .. LOCALIZATION_ZORLEN.FrostTrap ..
-	"\")", 1, "Spell_Frost_FreezingBreath", nil, nil, 1)
-	Zorlen_MakeMacro("z ExplosiveTrap",
-		"/script castExplosiveTrap()--CastSpellByName(\"" .. LOCALIZATION_ZORLEN.ExplosiveTrap .. "\")", 1,
-		"Spell_Fire_SelfDestruct", nil, nil, 1)
-	Zorlen_MakeMacro("z ImmolationTrap",
-		"/script castImmolationTrap()--CastSpellByName(\"" .. LOCALIZATION_ZORLEN.ImmolationTrap .. "\")", 1,
-		"Spell_Fire_FlameShock", nil, nil, 1)
-	Zorlen_MakeMacro("z Call Pet",
-		"/script castCallAndDismissPet()--CastSpellByName(\"" .. LOCALIZATION_ZORLEN.CallPet .. "\")", 1,
-		"Ability_Hunter_BeastCall", nil, nil, 1)
-	Zorlen_MakeMacro("z Shot Rotation",
-		"/script local a=Zorlen_TargetIsActiveEnemy()if a or Zorlen_isEnemyPlayer()then if a then castAutoShot()end if not a or not castSting()then castShotRotation()end else Zorlen_TargetActiveEnemyOnly()end--CastSpellByName(\"" ..
-		LOCALIZATION_ZORLEN.AimedShot .. "\")", 1, "Ability_SearingArrow", nil, nil, 1)
-	Zorlen_MakeMacro("z Wyvern Sting",
-		"/script castWyvernSting()--CastSpellByName(\"" .. LOCALIZATION_ZORLEN.WyvernSting .. "\")", 1,
-		"Ability_Rogue_DualWeild", nil, nil, 1)
-end
-
 function Zorlen_CheckForWingClipDebuffWindow_timer_function()
 	if not isClipped() then
 		Zorlen_debug("Target is immune to " .. LOCALIZATION_ZORLEN.WingClip .. "!")
