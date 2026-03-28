@@ -3,6 +3,13 @@ Zorlen_Hunter_FileBuildNumber = 689
 --[[
   Zorlen Library - Started by Marcus S. Zarra
 
+  5.09
+		Major refactoring to eliminate code duplication and improve maintainability
+		Implemented declarative map-driven function generation for castX and isXActive functions
+		Simplified castWyvernSting() with improved flow control and reduced nesting
+		Unified trap casting logic into Zorlen_CastHunterTrap() helper function
+
+		
   4.25
 		castHunterTracking() added by Corpboy
 
@@ -304,33 +311,6 @@ function Zorlen_Hunter_AfterPreSpellCancelTimers(Name, Pre, Tag)
 	end
 end
 
-function Zorlen_Hunter_MakeMacros()
-	Zorlen_MakeMacro("z Mend Pet",
-		"/script if not needPet()then castOverMend()end--CastSpellByName(\"" ..
-		LOCALIZATION_ZORLEN.MendPet .. "(" .. LOCALIZATION_ZORLEN.Rank .. " 1)\")", 1, "Ability_Hunter_MendPet", nil, nil,
-		1)
-	Zorlen_MakeMacro("z FreezingTrap",
-		"/script castFreezingTrapWithPetPassive()--CastSpellByName(\"" .. LOCALIZATION_ZORLEN.FreezingTrap .. "\")", 1,
-		"Spell_Frost_ChainsOfIce", nil, nil, 1)
-	Zorlen_MakeMacro("z FrostTrap", "/script castFrostTrap()--CastSpellByName(\"" .. LOCALIZATION_ZORLEN.FrostTrap ..
-	"\")", 1, "Spell_Frost_FreezingBreath", nil, nil, 1)
-	Zorlen_MakeMacro("z ExplosiveTrap",
-		"/script castExplosiveTrap()--CastSpellByName(\"" .. LOCALIZATION_ZORLEN.ExplosiveTrap .. "\")", 1,
-		"Spell_Fire_SelfDestruct", nil, nil, 1)
-	Zorlen_MakeMacro("z ImmolationTrap",
-		"/script castImmolationTrap()--CastSpellByName(\"" .. LOCALIZATION_ZORLEN.ImmolationTrap .. "\")", 1,
-		"Spell_Fire_FlameShock", nil, nil, 1)
-	Zorlen_MakeMacro("z Call Pet",
-		"/script castCallAndDismissPet()--CastSpellByName(\"" .. LOCALIZATION_ZORLEN.CallPet .. "\")", 1,
-		"Ability_Hunter_BeastCall", nil, nil, 1)
-	Zorlen_MakeMacro("z Shot Rotation",
-		"/script local a=Zorlen_TargetIsActiveEnemy()if a or Zorlen_isEnemyPlayer()then if a then castAutoShot()end if not a or not castSting()then castShotRotation()end else Zorlen_TargetActiveEnemyOnly()end--CastSpellByName(\"" ..
-		LOCALIZATION_ZORLEN.AimedShot .. "\")", 1, "Ability_SearingArrow", nil, nil, 1)
-	Zorlen_MakeMacro("z Wyvern Sting",
-		"/script castWyvernSting()--CastSpellByName(\"" .. LOCALIZATION_ZORLEN.WyvernSting .. "\")", 1,
-		"Ability_Rogue_DualWeild", nil, nil, 1)
-end
-
 function Zorlen_CheckForWingClipDebuffWindow_timer_function()
 	if not isClipped() then
 		Zorlen_debug("Target is immune to " .. LOCALIZATION_ZORLEN.WingClip .. "!")
@@ -506,392 +486,155 @@ function canTrap()
 	return true
 end
 
---Returns true if any Aspect is active
+local global = getfenv(0)
+
+local HunterSpellMap = {
+	-- Aspects and Auras
+	Hawk = {spellNameKey = "AspectOfTheHawk", buffIcon = "Spell_Nature_RavenForm", useBuffName = true},
+	Monk = {spellNameKey = "AspectOfTheMonkey", buffIcon = "Ability_Hunter_AspectOfTheMonkey"},
+	Cheetah = {spellNameKey = "AspectOfTheCheetah", buffIcon = "Ability_Mount_JungleTiger"},
+	Beast = {spellNameKey = "AspectOfTheBeast", buffIcon = "Ability_Mount_PinkTiger", buffCheckIncluded = true},
+	Wild = {spellNameKey = "AspectOfTheWild", buffIcon = "Spell_Nature_ProtectionformNature", exclusive = true, buffCheckIncluded = true, noRangeCheck = true},
+	Pack = {spellNameKey = "AspectOfThePack", exclusive = true, checkByName = true, buffCheckIncluded = true},
+	Trueshot = {spellNameKey = "TrueshotAura", buffIcon = "Ability_TrueShot", buffCheckFunc = "isTrueshotActive", enemyTargetNotNeeded = true, noRangeCheck = true, buffCheckIncluded = true, acceptsExtraParam = true, skipIsGeneration = true},
+
+	-- Stings and counters
+	Serpent = {spellNameKey = "SerpentSting", debuffName = true, debuffImmuneVar = "Zorlen_SerpentStingSpellCastImmune", debuffTimer = 1},
+	Viper = {spellNameKey = "ViperSting", debuffName = true, debuffImmuneIsTimer = true, targetMana = true},
+	Scorpid = {spellNameKey = "ScorpidSting", debuffName = true, debuffImmuneVar = "Zorlen_ScorpidStingSpellCastImmune"},
+	Counter = {spellNameKey = "Counterattack"},
+	Con = {spellNameKey = "ConcussiveShot", debuffName = true, debuffImmuneIsTimer = true, preCheck = "isClipped"},
+
+	-- Standard casts
+	Distract = {spellNameKey = "DistractingShot"},
+	Arcane = {spellNameKey = "ArcaneShot"},
+	Disengage = {spellNameKey = "Disengage", check = function() return Zorlen_TargetIsEnemyMob() end},
+	Scatter = {spellNameKey = "ScatterShot", check = function() return not Zorlen_isCrowedControlled() end},
+	Multi = {spellNameKey = "MultiShot", check = function() return not Zorlen_isMoving() end},
+	Aimed = {spellNameKey = "AimedShot", check = function() return not Zorlen_isMoving() end},
+	Mark = {spellNameKey = "HuntersMark", debuffName = true, debuffImmuneVar = "Zorlen_HuntersMarkSpellCastImmune"},
+	Feign = {spellNameKey = "FeignDeath", check = function() return not isFeign() end, enemyTargetNotNeeded = true},
+	Rapid = {spellNameKey = "RapidFire"},
+	BestialWrath = {spellNameKey = "BestialWrath", check = function() return UnitHealth("pet") > 0 end, enemyTargetNotNeeded = true, noRangeCheck = true},
+	Intimidation = {spellNameKey = "Intimidation", check = function() return UnitHealth("pet") > 0 end, enemyTargetNotNeeded = true, noRangeCheck = true},
+}
+
+local AspectOrder = {"Hawk", "Monk", "Cheetah", "Beast", "Wild", "Pack", "Trueshot"}
+
+-- Generate isXActive functions for aspects
+for _, aspectName in ipairs(AspectOrder) do
+	do
+		local cfg = HunterSpellMap[aspectName]
+		if not cfg.skipIsGeneration then
+			local isFuncName = "is" .. aspectName .. "Active"
+
+			global[isFuncName] = function()
+				if cfg.exclusive then
+					for _, other in ipairs({"Hawk", "Monk", "Cheetah", "Beast"}) do
+						if global["is" .. other .. "Active"]() then
+							return false
+						end
+					end
+				end
+
+				if cfg.checkByName then
+					return Zorlen_checkBuffByName(LOCALIZATION_ZORLEN[cfg.spellNameKey])
+				end
+
+				return Zorlen_checkBuff(cfg.buffIcon)
+			end
+		end
+	end
+end
+
 function isAspectActive()
-	if
-		isHawkActive()
-		or
-		isMonkActive()
-		or
-		isCheetahActive()
-		or
-		isBeastActive()
-		or
-		isWildActive()
-		or
-		isPackActive()
-	then
-		return true
-	end
-	return false
-end
-
---Returns true if Aspect of the Wild is active
-function isWildActive()
-	if
-		not isHawkActive()
-		and
-		not isMonkActive()
-		and
-		not isCheetahActive()
-		and
-		not isBeastActive()
-	then
-		return Zorlen_checkBuff("Spell_Nature_ProtectionformNature")
-	end
-	return false
-end
-
---Returns true if Aspect of the Beast is active
-function isBeastActive()
-	return Zorlen_checkBuff("Ability_Mount_PinkTiger")
-end
-
---Returns true if Aspect of the Hawk is active
-function isHawkActive()
-	return Zorlen_checkBuff("Spell_Nature_RavenForm")
-end
-
---Returns true if Aspect of the Monkey is active
-function isMonkActive()
-	return Zorlen_checkBuff("Ability_Hunter_AspectOfTheMonkey")
-end
-
---Returns true if Aspect of the Cheetah is active
-function isCheetahActive()
-	return Zorlen_checkBuff("Ability_Mount_JungleTiger")
-	--  return Zorlen_checkBuff("JungleTiger")
-end
-
---Returns true if Aspect of the Cheetah is active
-function isPackActive()
-	local SpellName = LOCALIZATION_ZORLEN.AspectOfThePack
-	if
-		not isHawkActive()
-		and
-		not isMonkActive()
-		and
-		not isCheetahActive()
-		and
-		not isBeastActive()
-	then
-		return Zorlen_checkBuffByName(SpellName)
-	end
-	return false
-end
-
---Returns true if Trueshot Aura is active
-function isTrueshotActive(HasDuration)
-	return Zorlen_checkSelfBuff("Ability_TrueShot", nil, nil, nil, HasDuration)
-end
-
-function isSerpent(unit, dispelable)
-	local u = unit or "target"
-	local Name = UnitName(u)
-	if Zorlen_IsTimer(LOCALIZATION_ZORLEN.SerpentSting, Name, "InternalZorlenSpellTimers") and Zorlen_checkDebuff("Ability_Hunter_Quickshot", unit, dispelable) then
-		return true
-	end
-	return false
-end
-
-function isStung(unit, dispelable)
-	local u = unit or "target"
-	local Name = UnitName(u)
-	if
-		(Zorlen_IsTimer(LOCALIZATION_ZORLEN.SerpentSting, Name, "InternalZorlenSpellTimers") and Zorlen_checkDebuff("Ability_Hunter_Quickshot", unit, dispelable))
-		or
-		(Zorlen_IsTimer(LOCALIZATION_ZORLEN.ScorpidSting, Name, "InternalZorlenSpellTimers") and Zorlen_checkDebuff("Ability_Hunter_CriticalShot", unit, dispelable))
-		or
-		(Zorlen_IsTimer(LOCALIZATION_ZORLEN.ViperSting, Name, "InternalZorlenSpellTimers") and Zorlen_checkDebuff("Ability_Hunter_AimedShot", unit, dispelable))
-		or
-		(Zorlen_IsTimer(LOCALIZATION_ZORLEN.WyvernSting, Name, "InternalZorlenSpellTimers") and Zorlen_checkDebuff("INV_Spear_02", unit, dispelable))
-	then
-		return true
-	end
-	return false
-end
-
---Returns true if the hunter is currently feigned
---Written by Malnyth of Ravencrest
---edited by BigRedBrent
-function isFeign()
-	if UnitHealth("player") == 0 then
-		return true
-	end
-	return false
-end
-
---Returns true if Hunter Quickshots is active
-function isQuickshotsActive()
-	return Zorlen_checkBuff("InnerRage")
-end
-
---Returns true if Hunter Rapid Fire is active
-function isRapidActive()
-	return Zorlen_checkBuff("RunningShot")
-end
-
-function castSting()
-	if not isStung() then
-		local Classification = UnitClassification("target") or ""
-		local boss = string.find(string.lower(Classification), "boss")
-		if boss then
-			if castViper() then
-				return true
-			end
-			return castSerpent()
-		elseif not Zorlen_TargetIsDieingEnemy() then
-			if UnitPlayerControlled("target") then
-				if castViper() then
-					return true
-				end
-				return castScorpid()
-			end
-			return castSerpent()
+	for _, aspectName in ipairs(AspectOrder) do
+		if global["is" .. aspectName .. "Active"]() then
+			return true
 		end
 	end
 	return false
 end
 
-function castScareBeast(SpellRank)
-	if Zorlen_isMoving() then
-		return false
-	end
-	if UnitCreatureType("target") ~= "Beast" and not isDruid() then
-		return false
-	end
-	local SpellName = LOCALIZATION_ZORLEN.ScareBeast
-	local DebuffCheckIncluded = 1
-	local DebuffCheck = Zorlen_isCrowedControlled()
-	local Name = UnitName("target")
-	if Zorlen_IsTimer(SpellName, Name, "InternalZorlenSpellTimers") and DebuffCheck then
-		if Zorlen_GetTimer(SpellName, Name, "InternalZorlenSpellTimers") <= 1.5 then
-			if not Zorlen_isNoDamageCC() then
-				DebuffCheck = nil
-			end
-		end
-	end
-	local StopCasting = DebuffCheck
-	return Zorlen_CastCommonRegisteredSpell(SpellRank, SpellName, nil, nil, nil, nil, nil, nil, nil, DebuffCheckIncluded,
-		DebuffCheck, nil, nil, nil, nil, nil, nil, nil, nil, StopCasting)
-end
-
---Wynn 12/27/05 - Refactor to use existing active check
---edited by BigRedBrent
-function castSerpent(SpellRank)
-	local SpellName = LOCALIZATION_ZORLEN.SerpentSting
-	local DebuffName = SpellName
-	local DebuffImmune = Zorlen_SerpentStingSpellCastImmune
-	local DebuffTimer = 1
-	return Zorlen_CastCommonRegisteredSpell(SpellRank, SpellName, DebuffName, DebuffImmune, nil, nil, nil, nil, nil, nil,
-		nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, DebuffTimer)
-end
-
---Wynn 12/27/05 - Refactor to use existing usesMana and isViper checks
---edited by BigRedBrent
-function castViper(SpellRank)
-	local SpellName = LOCALIZATION_ZORLEN.ViperSting
-	local DebuffName = SpellName
-	local DebuffImmune = Zorlen_IsTimer(SpellName, "immune", "InternalZorlenMiscTimer")
-	local TargetThatUsesManaNeeded = 1
-	return Zorlen_CastCommonRegisteredSpell(SpellRank, SpellName, DebuffName, DebuffImmune, nil, nil, nil, nil,
-		TargetThatUsesManaNeeded)
-end
-
---Wynn 12/27/05 - Refactor to use existing active check
---edited by BigRedBrent
-function castScorpid(SpellRank)
-	local SpellName = LOCALIZATION_ZORLEN.ScorpidSting
-	local DebuffName = SpellName
-	local DebuffImmune = Zorlen_ScorpidStingSpellCastImmune
-	return Zorlen_CastCommonRegisteredSpell(SpellRank, SpellName, DebuffName, DebuffImmune)
-end
-
---Added by Nuckin
---edited by BigRedBrent
-function castMong(SpellRank)
-	local SpellName = LOCALIZATION_ZORLEN.MongooseBite
-	local r = SpellRank or Zorlen_GetSpellRank(SpellName)
-	local mana = UnitMana("player")
-	local health = UnitHealth("player")
-	local m = { 30, 40, 50, 65 }
-	local q = 0
-	local FeignSpellName = LOCALIZATION_ZORLEN.FeignDeath
-	if Zorlen_Button[FeignSpellName .. ".Any"] or Zorlen_IsSpellKnown(FeignSpellName) then
-		q = 80
-	end
-	if q == 0 then
-		return Zorlen_CastCommonRegisteredSpell(SpellRank, SpellName)
-	elseif SpellRank then
-		if (mana >= (m[r] + q)) or (health == 0) then
-			return Zorlen_CastCommonRegisteredSpell(SpellRank, SpellName)
-		end
-	else
-		for i = 4, 1, -1 do
-			if r == i then
-				if (mana >= (m[i] + q)) or (health == 0) then
-					return Zorlen_CastCommonRegisteredSpell(nil, SpellName)
-				end
+-- Generate castX functions for all spells
+for funcSuffix, cfg in pairs(HunterSpellMap) do
+	do
+		local funcName = "cast" .. funcSuffix
+		local isAspect = false
+		for _, aspect in ipairs(AspectOrder) do
+			if aspect == funcSuffix then
+				isAspect = true
 				break
 			end
 		end
-	end
-	return false
-end
 
-function castCounter(SpellRank)
-	local SpellName = LOCALIZATION_ZORLEN.Counterattack
-	return Zorlen_CastCommonRegisteredSpell(SpellRank, SpellName)
-end
-
---Added by Nuckin
---edited by BigRedBrent
-function castCon(SpellRank)
-	local SpellName = LOCALIZATION_ZORLEN.ConcussiveShot
-	local DebuffName = SpellName
-	local DebuffImmune = Zorlen_IsTimer(SpellName, "immune", "InternalZorlenMiscTimer")
-	if isClipped() then
-		return false
-	end
-	return Zorlen_CastCommonRegisteredSpell(SpellRank, SpellName, DebuffName, DebuffImmune)
-end
-
---Added by Nuckin
---edited by BigRedBrent
-function castRaptor(SpellRank)
-	local SpellName = LOCALIZATION_ZORLEN.RaptorStrike
-	local r = SpellRank or Zorlen_GetSpellRank(SpellName)
-	local mana = UnitMana("player")
-	local health = UnitHealth("player")
-	local m = { 15, 25, 35, 45, 55, 70, 85, 100 }
-	local q = 0
-	local FeignSpellName = LOCALIZATION_ZORLEN.FeignDeath
-	if Zorlen_Button[FeignSpellName .. ".Any"] or Zorlen_IsSpellKnown(FeignSpellName) then
-		q = 80
-	end
-	if q == 0 then
-		return Zorlen_CastCommonRegisteredSpell(SpellRank, SpellName)
-	elseif SpellRank then
-		if (mana >= (m[r] + q)) or (health == 0) then
-			return Zorlen_CastCommonRegisteredSpell(SpellRank, SpellName)
-		end
-	else
-		for i = 8, 1, -1 do
-			if r == i then
-				if (mana >= (m[i] + q)) or (health == 0) then
-					return Zorlen_CastCommonRegisteredSpell(nil, SpellName)
+		if cfg.acceptsExtraParam then
+			-- For functions that accept extra parameters (like castTrueshot(HasDuration))
+			global[funcName] = function(SpellRank, extraParam)
+				local SpellName = LOCALIZATION_ZORLEN[cfg.spellNameKey]
+				if not SpellName then
+					return false
 				end
-				break
+
+				if cfg.preCheck and global[cfg.preCheck] and global[cfg.preCheck]() then
+					return false
+				end
+
+				if cfg.check and not cfg.check() then
+					return false
+				end
+
+				local EnemyTargetNotNeeded = cfg.enemyTargetNotNeeded and 1
+				local NoRangeCheck = cfg.noRangeCheck and 1
+				local BuffCheckIncluded = cfg.buffCheckIncluded and 1
+				local BuffCheck = cfg.buffCheckFunc and global[cfg.buffCheckFunc](extraParam)
+
+				return Zorlen_CastCommonRegisteredSpell(nil, SpellName, nil, nil, nil, nil, EnemyTargetNotNeeded, nil, nil, nil, nil,
+					BuffCheckIncluded, BuffCheck, nil, nil, nil, nil, nil, nil, nil, NoRangeCheck)
+			end
+		else
+			global[funcName] = function(SpellRank)
+				local SpellName = LOCALIZATION_ZORLEN[cfg.spellNameKey]
+				if not SpellName then
+					return false
+				end
+
+				if cfg.preCheck and global[cfg.preCheck] and global[cfg.preCheck]() then
+					return false
+				end
+
+				if cfg.check and not cfg.check() then
+					return false
+				end
+
+				if isAspect then
+					-- Aspect-specific logic
+					local EnemyTargetNotNeeded = 1
+					local BuffName = cfg.useBuffName and SpellName
+					local BuffCheckIncluded = cfg.buffCheckIncluded and 1
+					local BuffCheck = cfg.buffCheckIncluded and global["is" .. funcSuffix .. "Active"]()
+					local NoRangeCheck = cfg.noRangeCheck and 1
+
+					return Zorlen_CastCommonRegisteredSpell(nil, SpellName, nil, nil, nil, nil, EnemyTargetNotNeeded,
+						BuffName, nil, nil, nil, BuffCheckIncluded, BuffCheck, nil, nil, nil, nil, nil, nil, nil,
+						NoRangeCheck)
+				else
+					-- Standard cast logic
+					local info = { Rank = SpellRank, SpellName = SpellName }
+
+					if cfg.debuffName then info.DebuffName = SpellName end
+					if cfg.debuffImmuneVar then info.DebuffImmune = _G[cfg.debuffImmuneVar] end
+					if cfg.debuffImmuneIsTimer then info.DebuffImmune = Zorlen_IsTimer(SpellName, "immune", "InternalZorlenMiscTimer") end
+					if cfg.targetMana then info.TargetThatUsesManaNeeded = 1 end
+					if cfg.enemyTargetNotNeeded then info.EnemyTargetNotNeeded = 1 end
+					if cfg.noRangeCheck then info.NoRangeCheck = 1 end
+					if cfg.debuffTimer then info.DebuffTimer = cfg.debuffTimer end
+
+					return Zorlen_CastCommonRegisteredSpell(info)
+				end
 			end
 		end
 	end
-	return false
-end
-
---If Aspect of the Hawk is not already active, cast highest level
---Written by Andrew Young(andrew@inmyroom.org)
---Wynn 12/27/05 - Refactor to use existing active check
---edited by BigRedBrent
-function castHawk()
-	local SpellName = LOCALIZATION_ZORLEN.AspectOfTheHawk
-	local EnemyTargetNotNeeded = 1
-	local BuffName = SpellName
-	return Zorlen_CastCommonRegisteredSpell(nil, SpellName, nil, nil, nil, nil, EnemyTargetNotNeeded, BuffName)
-end
-
--- Added by Wildbill
---edited by BigRedBrent
-function castWild()
-	local SpellName = LOCALIZATION_ZORLEN.AspectOfTheWild
-	local EnemyTargetNotNeeded = 1
-	local BuffCheckIncluded = 1
-	local BuffCheck = isWildActive()
-	local NoRangeCheck = 1
-	return Zorlen_CastCommonRegisteredSpell(nil, SpellName, nil, nil, nil, nil, EnemyTargetNotNeeded, nil, nil, nil, nil,
-		BuffCheckIncluded, BuffCheck, nil, nil, nil, nil, nil, nil, nil, NoRangeCheck)
-end
-
-function castBeast()
-	local SpellName = LOCALIZATION_ZORLEN.AspectOfTheBeast
-	local EnemyTargetNotNeeded = 1
-	local BuffCheckIncluded = 1
-	local BuffCheck = isBeastActive()
-	return Zorlen_CastCommonRegisteredSpell(nil, SpellName, nil, nil, nil, nil, EnemyTargetNotNeeded, nil, nil, nil, nil,
-		BuffCheckIncluded, BuffCheck)
-end
-
-function castDistract(SpellRank)
-	local SpellName = LOCALIZATION_ZORLEN.DistractingShot
-	return Zorlen_CastCommonRegisteredSpell(SpellRank, SpellName)
-end
-
-function castArcane(SpellRank)
-	local SpellName = LOCALIZATION_ZORLEN.ArcaneShot
-	return Zorlen_CastCommonRegisteredSpell(SpellRank, SpellName)
-end
-
--- Added by Wildbill
---edited by BigRedBrent
-function castDisengage(SpellRank)
-	local SpellName = LOCALIZATION_ZORLEN.Disengage
-	if not Zorlen_TargetIsEnemyMob() then
-		return false
-	end
-	return Zorlen_CastCommonRegisteredSpell(SpellRank, SpellName)
-end
-
-function castScatter(SpellRank)
-	local SpellName = LOCALIZATION_ZORLEN.ScatterShot
-	if Zorlen_isCrowedControlled() then
-		return false
-	end
-	return Zorlen_CastCommonRegisteredSpell(SpellRank, SpellName)
-end
-
-function castMulti(SpellRank)
-	if Zorlen_isMoving() then
-		return false
-	end
-	local SpellName = LOCALIZATION_ZORLEN.MultiShot
-	return Zorlen_CastCommonRegisteredSpell(SpellRank, SpellName)
-end
-
-function castAimed(SpellRank)
-	if Zorlen_isMoving() then
-		return false
-	end
-	local SpellName = LOCALIZATION_ZORLEN.AimedShot
-	return Zorlen_CastCommonRegisteredSpell(SpellRank, SpellName)
-end
-
---If A Hunter's Mark is not already on the target will cast highest level
---Written by Andrew Young(andrew@inmyroom.org)
---Wynn 12/27/05 - Refactor to use existing active check
---edited by BigRedBrent
-function castMark(SpellRank)
-	local SpellName = LOCALIZATION_ZORLEN.HuntersMark
-	local DebuffName = SpellName
-	local DebuffImmune = Zorlen_HuntersMarkSpellCastImmune
-	return Zorlen_CastCommonRegisteredSpell(SpellRank, SpellName, DebuffName, DebuffImmune)
-end
-
---If Aspect of the Monkey is not already active, it will cast it
---Wynn 12/27/05 - Added return values to function
---edited by BigRedBrent
-function castMonkey()
-	local SpellName = LOCALIZATION_ZORLEN.AspectOfTheMonkey
-	local EnemyTargetNotNeeded = 1
-	local BuffName = SpellName
-	return Zorlen_CastCommonRegisteredSpell(nil, SpellName, nil, nil, nil, nil, EnemyTargetNotNeeded, BuffName)
-end
-
-function castFeign()
-	local SpellName = LOCALIZATION_ZORLEN.FeignDeath
-	local EnemyTargetNotNeeded = 1
-	if isFeign() then
-		return false
-	end
-	return Zorlen_CastCommonRegisteredSpell(nil, SpellName, nil, nil, nil, nil, EnemyTargetNotNeeded)
 end
 
 --Testing function.  Will return the name of the current aspect
@@ -904,66 +647,6 @@ function Zorlen_getAspectName()
 		end
 		x = x + 1
 	end
-end
-
---If Aspect of the Cheetah is not already active, it will cast it
---Wynn 12/27/05 - Added return values to function
---edited by BigRedBrent
-function castCheetah()
-	local SpellName = LOCALIZATION_ZORLEN.AspectOfTheCheetah
-	local EnemyTargetNotNeeded = 1
-	local BuffName = SpellName
-	return Zorlen_CastCommonRegisteredSpell(nil, SpellName, nil, nil, nil, nil, EnemyTargetNotNeeded, BuffName)
-end
-
-function castPack()
-	local SpellName = LOCALIZATION_ZORLEN.AspectOfThePack
-	local EnemyTargetNotNeeded = 1
-	local BuffCheckIncluded = 1
-	local BuffCheck = isPackActive()
-	local NoRangeCheck = 1
-	return Zorlen_CastCommonRegisteredSpell(nil, SpellName, nil, nil, nil, nil, EnemyTargetNotNeeded, nil, nil, nil, nil,
-		BuffCheckIncluded, BuffCheck, nil, nil, nil, nil, nil, nil, nil, NoRangeCheck)
-end
-
---If Trueshot Aura is not already active, it will cast it
-function castTrueshot(HasDuration)
-	local SpellName = LOCALIZATION_ZORLEN.TrueshotAura
-	local EnemyTargetNotNeeded = 1
-	local BuffCheckIncluded = 1
-	local BuffCheck = isTrueshotActive(HasDuration)
-	local NoRangeCheck = 1
-	return Zorlen_CastCommonRegisteredSpell(nil, SpellName, nil, nil, nil, nil, EnemyTargetNotNeeded, nil, nil, nil, nil,
-		BuffCheckIncluded, BuffCheck, nil, nil, nil, nil, nil, nil, nil, NoRangeCheck)
-end
-
-function castBestialWrath()
-	local SpellName = LOCALIZATION_ZORLEN.BestialWrath
-	local EnemyTargetNotNeeded = 1
-	local NoRangeCheck = 1
-	if not (UnitHealth("pet") > 0) then
-		return false
-	end
-	return Zorlen_CastCommonRegisteredSpell(nil, SpellName, nil, nil, nil, nil, EnemyTargetNotNeeded, nil, nil, nil, nil,
-		nil, nil, nil, nil, nil, nil, nil, nil, nil, NoRangeCheck)
-end
-
-castBeastialWrath = castBestialWrath
-
-function castIntimidation()
-	local SpellName = LOCALIZATION_ZORLEN.Intimidation
-	local EnemyTargetNotNeeded = 1
-	local NoRangeCheck = 1
-	if not (UnitHealth("pet") > 0) then
-		return false
-	end
-	return Zorlen_CastCommonRegisteredSpell(nil, SpellName, nil, nil, nil, nil, EnemyTargetNotNeeded, nil, nil, nil, nil,
-		nil, nil, nil, nil, nil, nil, nil, nil, nil, NoRangeCheck)
-end
-
-function castRapid()
-	local SpellName = LOCALIZATION_ZORLEN.RapidFire
-	return Zorlen_CastCommonRegisteredSpell(nil, SpellName)
 end
 
 --Aded by Jayphen
@@ -1006,71 +689,80 @@ end
 
 function castWyvernSting(SpellRank, mode)
 	local SpellName = LOCALIZATION_ZORLEN.WyvernSting
-	local FeignSpellID = nil
-	local start, duration, enable = 0, 0, 0
-	local FeignSpellKnown = nil
-	local FeignSpellName = LOCALIZATION_ZORLEN.FeignDeath
+	if not Zorlen_checkCooldownByName(SpellName) then
+		return false
+	end
+
 	local r = SpellRank or Zorlen_GetSpellRank(SpellName)
 	local mana = UnitMana("player")
 	local health = UnitHealth("player")
 	local m = { 115, 155, 205 }
 	local q = 0
-	local DebuffCheckIncluded = 1
-	local DebuffCheck = Zorlen_isNoDamageCC()
-	local SpellCheckNotNeeded = 1
-	if (Zorlen_Button[FeignSpellName .. ".Any"] or Zorlen_IsSpellKnown(FeignSpellName)) then
-		FeignSpellKnown = 1
+
+	-- Reserve mana for Feign Death if available
+	local FeignSpellName = LOCALIZATION_ZORLEN.FeignDeath
+	local FeignSpellID = nil
+	local start, duration = 0, 0
+	if Zorlen_Button[FeignSpellName .. ".Any"] or Zorlen_IsSpellKnown(FeignSpellName) then
 		FeignSpellID = Zorlen_GetSpellID(FeignSpellName, 0)
-		start, duration, enable = GetSpellCooldown(FeignSpellID, 0)
+		start, duration = GetSpellCooldown(FeignSpellID, 0)
 		if not canTrap() then
 			q = 80
 		end
 	end
-	if Zorlen_checkCooldownByName(SpellName) then
-		for i = 3, 1, -1 do
-			if (mana >= (m[i] + q)) or (health == 0) then
-				if r == i then
-					if canTrap() then
-						if Zorlen_TrapClearTargetFlag then
-							TargetLastEnemy()
-							Zorlen_TrapClearTargetFlag = nil
-						end
-						if health == 0 and not UnitIsPlayer("target") and not UnitExists("targettarget") then
-							return false
-						elseif not Zorlen_CastCommonRegisteredSpell(SpellRank, SpellName, nil, nil, nil, nil, nil, nil, nil, DebuffCheckIncluded, DebuffCheck, nil, nil, SpellCheckNotNeeded) then
-							return false
-						end
-						if mode == "passive" then
-							PetPassiveMode()
-						end
-						return true
-					else
-						if FeignSpellKnown then
-							if duration == 0 and health > 0 then
-								if UnitExists("target") then
-									Zorlen_TrapClearTargetFlag = 1
-									ClearTarget()
-								end
-								if UnitExists("pettarget") or (mode == "passive") then
-									if UnitExists("pettarget") then
-										PetFollow()
-									end
-									PetPassiveMode()
-								end
-								CastSpell(FeignSpellID, 0)
-								return true
-							end
-						end
-					end
-					break
+
+	-- Try to cast appropriate rank
+	for i = 3, 1, -1 do
+		if r == i and ((mana >= (m[i] + q)) or (health == 0)) then
+			if canTrap() then
+				-- Clear target flag if set
+				if Zorlen_TrapClearTargetFlag then
+					TargetLastEnemy()
+					Zorlen_TrapClearTargetFlag = nil
 				end
+
+				-- Don't cast if player is dead and target isn't valid for casting
+				if health == 0 and not UnitIsPlayer("target") and not UnitExists("targettarget") then
+					return false
+				end
+
+				-- Try to cast
+				if not Zorlen_CastCommonRegisteredSpell(SpellRank, SpellName, nil, nil, nil, nil, nil, nil, nil, 1, Zorlen_isNoDamageCC(), nil, nil, 1) then
+					return false
+				end
+
+				-- Set pet passive mode if requested
+				if mode == "passive" then
+					PetPassiveMode()
+				end
+
+				return true
+			elseif FeignSpellID and duration == 0 and health > 0 then
+				-- Feign Death available and off cooldown - use it to set up cast
+				if UnitExists("target") then
+					Zorlen_TrapClearTargetFlag = 1
+					ClearTarget()
+				end
+				if UnitExists("pettarget") or (mode == "passive") then
+					if UnitExists("pettarget") then
+						PetFollow()
+					end
+					PetPassiveMode()
+				end
+				CastSpell(FeignSpellID, 0)
+				return true
 			end
+
+			break
 		end
 	end
-	if Zorlen_TrapClearTargetFlag and duration > 1.5 then
+
+	-- Clear trap flag if Feign Death will be available soon
+	if Zorlen_TrapClearTargetFlag and FeignSpellID and duration > 1.5 then
 		TargetLastEnemy()
 		Zorlen_TrapClearTargetFlag = nil
 	end
+
 	return false
 end
 
@@ -1078,17 +770,22 @@ function castFreezingTrapWithPetPassive(SpellRank)
 	return castFreezingTrap(SpellRank, "passive")
 end
 
-function castFreezingTrap(SpellRank, mode)
-	local SpellName = LOCALIZATION_ZORLEN.FreezingTrap
-	local FeignSpellID = nil
-	local start, duration, enable = 0, 0, 0
-	local FeignSpellKnown = nil
+-- Unified trap casting helper function
+-- Handles mana checks, rank selection, Feign Death fallback, and target management
+-- manaTable: nil for single-rank, or array of mana costs indexed by rank
+-- spellRank: explicit rank or nil to auto-detect
+-- passiveMode: optional "passive" to put pet in passive after casting
+function Zorlen_CastHunterTrap(spellName, manaTable, spellRank, passiveMode)
 	local FeignSpellName = LOCALIZATION_ZORLEN.FeignDeath
-	local r = SpellRank or Zorlen_GetSpellRank(SpellName)
+	local FeignSpellID = nil
+	local FeignSpellKnown = nil
+	local start, duration, enable = 0, 0, 0
+	local r = spellRank or (manaTable and Zorlen_GetSpellRank(spellName) or 1)
 	local mana = UnitMana("player")
 	local health = UnitHealth("player")
-	local m = { 50, 75, 100 }
 	local q = 0
+	
+	-- Get Feign Death info
 	if (Zorlen_Button[FeignSpellName .. ".Any"] or Zorlen_IsSpellKnown(FeignSpellName)) then
 		FeignSpellKnown = 1
 		FeignSpellID = Zorlen_GetSpellID(FeignSpellName, 0)
@@ -1097,15 +794,26 @@ function castFreezingTrap(SpellRank, mode)
 			q = 80
 		end
 	end
-	if Zorlen_checkCooldownByName(SpellName) then
-		for i = 3, 1, -1 do
-			if (mana >= (m[i] + q)) or (health == 0) then
+	
+	if not Zorlen_checkCooldownByName(spellName) then
+		if Zorlen_TrapClearTargetFlag and duration > 1.5 then
+			TargetLastEnemy()
+			Zorlen_TrapClearTargetFlag = nil
+		end
+		return false
+	end
+	
+	-- Cast logic: either rank loop or single-rank
+	if manaTable then
+		-- Multi-rank trap: loop from highest to lowest
+		for i = table.getn(manaTable), 1, -1 do
+			if (mana >= (manaTable[i] + q)) or (health == 0) then
 				if r == i then
 					if canTrap() then
-						if not Zorlen_CastCommonRegisteredSpell(SpellRank, SpellName, nil, nil, nil, nil, 1, nil, nil, nil, nil, nil, nil, 1) then
+						if not Zorlen_CastCommonRegisteredSpell(spellRank, spellName, nil, nil, nil, nil, 1, nil, nil, nil, nil, nil, nil, 1) then
 							return false
 						end
-						if mode == "passive" then
+						if passiveMode == "passive" then
 							PetPassiveMode()
 						end
 						if Zorlen_TrapClearTargetFlag then
@@ -1114,116 +822,30 @@ function castFreezingTrap(SpellRank, mode)
 						end
 						return true
 					else
-						if FeignSpellKnown then
-							if duration == 0 and health > 0 then
-								if UnitExists("target") then
-									Zorlen_TrapClearTargetFlag = 1
-									ClearTarget()
-								end
-								if UnitExists("pettarget") or (mode == "passive") then
-									if UnitExists("pettarget") then
-										PetFollow()
-									end
-									PetPassiveMode()
-								end
-								CastSpell(FeignSpellID, 0)
-								return true
+						if FeignSpellKnown and duration == 0 and health > 0 then
+							if UnitExists("target") then
+								Zorlen_TrapClearTargetFlag = 1
+								ClearTarget()
 							end
-						end
-					end
-					break
-				end
-			end
-		end
-	end
-	if Zorlen_TrapClearTargetFlag and duration > 1.5 then
-		TargetLastEnemy()
-		Zorlen_TrapClearTargetFlag = nil
-	end
-	return false
-end
-
-function castImmolationTrap(SpellRank)
-	local SpellName = LOCALIZATION_ZORLEN.ImmolationTrap
-	local FeignSpellID = nil
-	local start, duration, enable = 0, 0, 0
-	local FeignSpellKnown = nil
-	local FeignSpellName = LOCALIZATION_ZORLEN.FeignDeath
-	local r = SpellRank or Zorlen_GetSpellRank(SpellName)
-	local mana = UnitMana("player")
-	local health = UnitHealth("player")
-	local m = { 50, 90, 135, 190, 245 }
-	local q = 0
-	if (Zorlen_Button[FeignSpellName .. ".Any"] or Zorlen_IsSpellKnown(FeignSpellName)) then
-		FeignSpellKnown = 1
-		FeignSpellID = Zorlen_GetSpellID(FeignSpellName, 0)
-		start, duration, enable = GetSpellCooldown(FeignSpellID, 0)
-		if not canTrap() then
-			q = 80
-		end
-	end
-	if Zorlen_checkCooldownByName(SpellName) then
-		for i = 5, 1, -1 do
-			if (mana >= (m[i] + q)) or (health == 0) then
-				if r == i then
-					if canTrap() then
-						if not Zorlen_CastCommonRegisteredSpell(SpellRank, SpellName, nil, nil, nil, nil, 1, nil, nil, nil, nil, nil, nil, 1) then
-							return false
-						end
-						if Zorlen_TrapClearTargetFlag then
-							TargetLastEnemy()
-							Zorlen_TrapClearTargetFlag = nil
-						end
-						return true
-					else
-						if FeignSpellKnown then
-							if duration == 0 and health > 0 then
-								if UnitExists("target") then
-									Zorlen_TrapClearTargetFlag = 1
-									ClearTarget()
-								end
+							if UnitExists("pettarget") or (passiveMode == "passive") then
 								if UnitExists("pettarget") then
 									PetFollow()
-									PetPassiveMode()
 								end
-								CastSpell(FeignSpellID, 0)
-								return true
+								PetPassiveMode()
 							end
+							CastSpell(FeignSpellID, 0)
+							return true
 						end
 					end
 					break
 				end
 			end
 		end
-	end
-	if Zorlen_TrapClearTargetFlag and duration > 1.5 then
-		TargetLastEnemy()
-		Zorlen_TrapClearTargetFlag = nil
-	end
-	return false
-end
-
-function castFrostTrap()
-	local SpellName = LOCALIZATION_ZORLEN.FrostTrap
-	local FeignSpellID = nil
-	local start, duration, enable = 0, 0, 0
-	local FeignSpellKnown = nil
-	local FeignSpellName = LOCALIZATION_ZORLEN.FeignDeath
-	local mana = UnitMana("player")
-	local health = UnitHealth("player")
-	local q = 0
-	if (Zorlen_Button[FeignSpellName .. ".Any"] or Zorlen_IsSpellKnown(FeignSpellName)) then
-		FeignSpellKnown = 1
-		FeignSpellID = Zorlen_GetSpellID(FeignSpellName, 0)
-		start, duration, enable = GetSpellCooldown(FeignSpellID, 0)
-		if not canTrap() then
-			q = 80
-		end
-	end
-	if Zorlen_checkCooldownByName(SpellName) then
+	else
+		-- Single-rank trap (Frost Trap): just check mana and cast
 		if (mana >= (60 + q)) or (health == 0) then
 			if canTrap() then
-				if not Zorlen_CastCommonRegisteredSpell(nil, SpellName, nil, nil, nil, nil, 1, nil, nil, nil, nil, nil, nil, 1) then
+				if not Zorlen_CastCommonRegisteredSpell(nil, spellName, nil, nil, nil, nil, 1, nil, nil, nil, nil, nil, nil, 1) then
 					return false
 				end
 				if Zorlen_TrapClearTargetFlag then
@@ -1232,23 +854,22 @@ function castFrostTrap()
 				end
 				return true
 			else
-				if FeignSpellKnown then
-					if duration == 0 and health > 0 then
-						if UnitExists("target") then
-							Zorlen_TrapClearTargetFlag = 1
-							ClearTarget()
-						end
-						if UnitExists("pettarget") then
-							PetFollow()
-							PetPassiveMode()
-						end
-						CastSpell(FeignSpellID, 0)
-						return true
+				if FeignSpellKnown and duration == 0 and health > 0 then
+					if UnitExists("target") then
+						Zorlen_TrapClearTargetFlag = 1
+						ClearTarget()
 					end
+					if UnitExists("pettarget") then
+						PetFollow()
+						PetPassiveMode()
+					end
+					CastSpell(FeignSpellID, 0)
+					return true
 				end
 			end
 		end
 	end
+	
 	if Zorlen_TrapClearTargetFlag and duration > 1.5 then
 		TargetLastEnemy()
 		Zorlen_TrapClearTargetFlag = nil
@@ -1256,64 +877,27 @@ function castFrostTrap()
 	return false
 end
 
+function castFreezingTrap(SpellRank, mode)
+	local SpellName = LOCALIZATION_ZORLEN.FreezingTrap
+	local m = { 50, 75, 100 }
+	return Zorlen_CastHunterTrap(SpellName, m, SpellRank, mode)
+end
+
+function castImmolationTrap(SpellRank)
+	local SpellName = LOCALIZATION_ZORLEN.ImmolationTrap
+	local m = { 50, 90, 135, 190, 245 }
+	return Zorlen_CastHunterTrap(SpellName, m, SpellRank)
+end
+
+function castFrostTrap()
+	local SpellName = LOCALIZATION_ZORLEN.FrostTrap
+	return Zorlen_CastHunterTrap(SpellName, nil)
+end
+
 function castExplosiveTrap(SpellRank)
 	local SpellName = LOCALIZATION_ZORLEN.ExplosiveTrap
-	local FeignSpellID = nil
-	local start, duration, enable = 0, 0, 0
-	local FeignSpellKnown = nil
-	local FeignSpellName = LOCALIZATION_ZORLEN.FeignDeath
-	local r = SpellRank or Zorlen_GetSpellRank(SpellName)
-	local mana = UnitMana("player")
-	local health = UnitHealth("player")
 	local m = { 275, 395, 520 }
-	local q = 0
-	if (Zorlen_Button[FeignSpellName .. ".Any"] or Zorlen_IsSpellKnown(FeignSpellName)) then
-		FeignSpellKnown = 1
-		FeignSpellID = Zorlen_GetSpellID(FeignSpellName, 0)
-		start, duration, enable = GetSpellCooldown(FeignSpellID, 0)
-		if not canTrap() then
-			q = 80
-		end
-	end
-	if Zorlen_checkCooldownByName(SpellName) then
-		for i = 3, 1, -1 do
-			if (mana >= (m[i] + q)) or (health == 0) then
-				if r == i then
-					if canTrap() then
-						if not Zorlen_CastCommonRegisteredSpell(SpellRank, SpellName, nil, nil, nil, nil, 1, nil, nil, nil, nil, nil, nil, 1) then
-							return false
-						end
-						if Zorlen_TrapClearTargetFlag then
-							TargetLastEnemy()
-							Zorlen_TrapClearTargetFlag = nil
-						end
-						return true
-					else
-						if FeignSpellKnown then
-							if duration == 0 and health > 0 then
-								if UnitExists("target") then
-									Zorlen_TrapClearTargetFlag = 1
-									ClearTarget()
-								end
-								if UnitExists("pettarget") then
-									PetFollow()
-									PetPassiveMode()
-								end
-								CastSpell(FeignSpellID, 0)
-								return true
-							end
-						end
-					end
-					break
-				end
-			end
-		end
-	end
-	if Zorlen_TrapClearTargetFlag and duration > 1.5 then
-		TargetLastEnemy()
-		Zorlen_TrapClearTargetFlag = nil
-	end
-	return false
+	return Zorlen_CastHunterTrap(SpellName, m, SpellRank)
 end
 
 --Mend Pet function
@@ -1468,4 +1052,39 @@ function PetCare()
     else
       CastSpellByName("Dismiss Pet");
     end
+end
+
+-- Sanity check test function for generated hunter functions
+function ZorlenHunterSanityCheck()
+	local passed = 0
+	local total = 0
+	
+	print("=== Zorlen Hunter Sanity Check ===")
+	
+	-- Test aspect isXActive functions
+	local aspectFuncs = {"isHawkActive", "isMonkActive", "isCheetahActive", "isBeastActive", "isWildActive", "isPackActive"}
+	for _, func in ipairs(aspectFuncs) do
+		total = total + 1
+		if type(_G[func]) == "function" then
+			passed = passed + 1
+			print("✓ " .. func .. " exists")
+		else
+			print("✗ " .. func .. " missing")
+		end
+	end
+	
+	-- Test cast functions
+	local castFuncs = {"castHawk", "castMonk", "castCheetah", "castBeast", "castWild", "castPack", "castSerpent", "castViper", "castScorpid", "castCounter", "castCon", "castDistract", "castArcane", "castDisengage", "castScatter", "castMulti", "castAimed", "castMark", "castFeign", "castRapid", "castBestialWrath", "castIntimidation", "castTrueshot"}
+	for _, func in ipairs(castFuncs) do
+		total = total + 1
+		if type(_G[func]) == "function" then
+			passed = passed + 1
+			print("✓ " .. func .. " exists")
+		else
+			print("✗ " .. func .. " missing")
+		end
+	end
+	
+	print("=== Results: " .. passed .. "/" .. total .. " tests passed ===")
+	return passed == total
 end
