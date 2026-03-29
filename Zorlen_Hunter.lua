@@ -214,7 +214,7 @@ local BuffCheckMap = {
 	isHawk = {icon ="Spell_Nature_RavenForm", type = "buff"},
 	isMonk = {icon = "Ability_Hunter_AspectOfTheMonkey", type = "buff"},
 	isCheetah = {icon = "Ability_Mount_JungleTiger", type = "buff"},
-	isBeast = {icon = "Ability_Mount_PinkTiger", type = "buff"},
+	isBeastAspect = {icon = "Ability_Mount_PinkTiger", type = "buff"},
 	isWild = {icon = "Spell_Nature_ProtectionformNature", type = "buff"},
 	-- Debuffs
 	isSerpentSting = {icon = "Spell_Nature_NullifyDisease", type = "debuff"},
@@ -874,14 +874,9 @@ function castMong(SpellRank)
 				break
 			end
 		end
-
-		if cfg.acceptsExtraParam then
-			-- For functions that accept extra parameters (like castTrueshot(HasDuration))
-			global[funcName] = function(SpellRank, extraParam)
-				local SpellName = LOCALIZATION_ZORLEN[cfg.spellNameKey]
-				if not SpellName then
-					return false
-				end
+	end
+	return false
+end
 
 function castCounter(SpellRank)
 	local SpellName = LOCALIZATION_ZORLEN.Counterattack
@@ -977,44 +972,6 @@ function castDisengage(SpellRank)
 		return false
 	end
 	return Zorlen_CastCommonRegisteredSpell(SpellRank, SpellName)
-end
-
-				if cfg.preCheck and global[cfg.preCheck] and global[cfg.preCheck]() then
-					return false
-				end
-
-				if cfg.check and not cfg.check() then
-					return false
-				end
-
-				if isAspect then
-					-- Aspect-specific logic
-					local EnemyTargetNotNeeded = 1
-					local BuffName = cfg.useBuffName and SpellName
-					local BuffCheckIncluded = cfg.buffCheckIncluded and 1
-					local BuffCheck = cfg.buffCheckIncluded and global["is" .. funcSuffix .. "Active"]()
-					local NoRangeCheck = cfg.noRangeCheck and 1
-
-					return Zorlen_CastCommonRegisteredSpell(nil, SpellName, nil, nil, nil, nil, EnemyTargetNotNeeded,
-						BuffName, nil, nil, nil, BuffCheckIncluded, BuffCheck, nil, nil, nil, nil, nil, nil, nil,
-						NoRangeCheck)
-				else
-					-- Standard cast logic
-					local info = { Rank = SpellRank, SpellName = SpellName }
-
-					if cfg.debuffName then info.DebuffName = SpellName end
-					if cfg.debuffImmuneVar then info.DebuffImmune = _G[cfg.debuffImmuneVar] end
-					if cfg.debuffImmuneIsTimer then info.DebuffImmune = Zorlen_IsTimer(SpellName, "immune", "InternalZorlenMiscTimer") end
-					if cfg.targetMana then info.TargetThatUsesManaNeeded = 1 end
-					if cfg.enemyTargetNotNeeded then info.EnemyTargetNotNeeded = 1 end
-					if cfg.noRangeCheck then info.NoRangeCheck = 1 end
-					if cfg.debuffTimer then info.DebuffTimer = cfg.debuffTimer end
-
-					return Zorlen_CastCommonRegisteredSpell(info)
-				end
-			end
-		end
-	end
 end
 
 --Testing function.  Will return the name of the current aspect
